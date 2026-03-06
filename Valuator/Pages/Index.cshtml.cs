@@ -1,37 +1,76 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using StackExchange.Redis;
 
 namespace Valuator.Pages;
 
 public class IndexModel : PageModel
 {
     private readonly ILogger<IndexModel> _logger;
+    private readonly IDatabase _redis;
 
-    public IndexModel(ILogger<IndexModel> logger)
+    public IndexModel(ILogger<IndexModel> logger, IConnectionMultiplexer redis)
     {
         _logger = logger;
+        _redis = redis.GetDatabase();
     }
 
     public void OnGet()
     {
-
     }
 
     public IActionResult OnPost(string text)
     {
         _logger.LogDebug(text);
 
+        text ??= string.Empty;
         string id = Guid.NewGuid().ToString();
 
         string textKey = "TEXT-" + id;
-        // TODO: (pa1) сохранить в БД (Redis) text по ключу textKey
+        _redis.StringSet(textKey, text);
 
+        double rank = CalculateRank(text);
         string rankKey = "RANK-" + id;
-        // TODO: (pa1) посчитать rank и сохранить в БД (Redis) по ключу rankKey
+        _redis.StringSet(rankKey, rank.ToString());
 
+        double similarity = CalculateSimilarity(text);
         string similarityKey = "SIMILARITY-" + id;
-        // TODO: (pa1) посчитать similarity и сохранить в БД (Redis) по ключу similarityKey
+        _redis.StringSet(similarityKey, similarity.ToString());
 
         return Redirect($"summary?id={id}");
+    }
+
+    private static double CalculateRank(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 0;
+
+        int nonAlphabetic = 0;
+        foreach (char c in text)
+        {
+            if (!IsAlphabetic(c))
+                nonAlphabetic++;
+        }
+        return (double)nonAlphabetic / text.Length;
+    }
+
+    private static bool IsAlphabetic(char c) =>
+        c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= 'а' and <= 'я' or >= 'А' and <= 'Я' or 'ё' or 'Ё';
+
+    private double CalculateSimilarity(string text)
+    {
+        string hash = ComputeHash(text);
+        const string setKey = "processed-text-hashes";
+        bool exists = _redis.SetContains(setKey, hash);
+        _redis.SetAdd(setKey, hash);
+        return exists ? 1 : 0;
+    }
+
+    private static string ComputeHash(string text)
+    {
+        byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(bytes);
     }
 }
