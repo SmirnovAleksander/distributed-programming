@@ -50,15 +50,11 @@ public class IndexModel : PageModel
         int nonAlphabetic = 0;
         foreach (char c in text)
         {
-            if (!IsAlphabetic(c))
+            if (!char.IsLetter(c))
                 nonAlphabetic++;
         }
         return (double)nonAlphabetic / text.Length;
     }
-
-    private static bool IsAlphabetic(char c) =>
-        c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= 'а' and <= 'я' or >= 'А' and <= 'Я' or 'ё' or 'Ё';
-
     private double CalculateSimilarity(string text)
     {
         string hash = ComputeHash(text);
