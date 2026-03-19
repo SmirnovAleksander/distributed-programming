@@ -25,7 +25,11 @@ public class IndexModel : PageModel
     {
         _logger.LogDebug(text);
 
-        text ??= string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Page();
+        }
+
         string id = Guid.NewGuid().ToString();
 
         string textKey = "TEXT-" + id;
@@ -44,8 +48,6 @@ public class IndexModel : PageModel
 
     private static double CalculateRank(string text)
     {
-        if (string.IsNullOrEmpty(text))
-            return 0;
 
         int nonAlphabetic = 0;
         foreach (char c in text)
