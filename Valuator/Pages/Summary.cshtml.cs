@@ -15,6 +15,7 @@ public class SummaryModel : PageModel
     }
 
     public double Rank { get; set; }
+    public bool IsRankCompleted { get; private set; }
     public double Similarity { get; set; }
 
     public void OnGet(string id)
@@ -27,7 +28,14 @@ public class SummaryModel : PageModel
             var similarityValue = _redis.StringGet("SIMILARITY-" + id);
 
             if (rankValue.HasValue && double.TryParse(rankValue, out double rank))
+            {
                 Rank = rank;
+                IsRankCompleted = true;
+            }
+            else
+            {
+                IsRankCompleted = false;
+            }
 
             if (similarityValue.HasValue && double.TryParse(similarityValue, out double similarity))
                 Similarity = similarity;
