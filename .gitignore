@@ -5,3 +5,6 @@ obj/
 /.vscode/
 /.idea/
 .vs
+
+.pids/
+.runners/

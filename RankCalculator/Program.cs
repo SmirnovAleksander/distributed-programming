@@ -1,121 +1,149 @@
-using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using StackExchange.Redis;
+using System.Text;
 
-public class Program
+var builder = Host.CreateApplicationBuilder(args);
+
+var redisConnectionString =
+    builder.Configuration.GetValue<string>("Redis:ConnectionString")
+    ?? throw new InvalidOperationException("Missing Redis:ConnectionString");
+
+var rabbitMqHost =
+    builder.Configuration.GetValue<string>("RabbitMq:HostName")
+    ?? throw new InvalidOperationException("Missing RabbitMq:HostName");
+
+var rabbitMqExchange =
+    builder.Configuration.GetValue<string>("RabbitMq:ExchangeName")
+    ?? throw new InvalidOperationException("Missing RabbitMq:ExchangeName");
+
+var rabbitMqQueue =
+    builder.Configuration.GetValue<string>("RabbitMq:QueueName")
+    ?? throw new InvalidOperationException("Missing RabbitMq:QueueName");
+
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    ConnectionMultiplexer.Connect(redisConnectionString));
+
+builder.Services.AddHostedService(sp =>
+    new Worker(
+        sp.GetRequiredService<IConnectionMultiplexer>(),
+        rabbitMqHost,
+        rabbitMqExchange,
+        rabbitMqQueue));
+
+await builder.Build().RunAsync();
+
+public class Worker : BackgroundService
 {
-    private const string QueueName = "valuator.processing.rank";
-    private const string ExchangeName = "valuator.processing.rank";
+    private readonly IConnectionMultiplexer _redis;
+    private readonly string _host;
+    private readonly string _exchange;
+    private readonly string _queue;
 
-    public static async Task Main(string[] args)
+    public Worker(
+        IConnectionMultiplexer redis,
+        string host,
+        string exchange,
+        string queue)
     {
-        var rabbitHost = Environment.GetEnvironmentVariable("RABBITMQ_HOST") ?? "localhost";
-        var redisConnectionString =
-            Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ??
-            Environment.GetEnvironmentVariable("Redis:ConnectionString") ??
-            "localhost:6379";
+        _redis = redis;
+        _host = host;
+        _exchange = exchange;
+        _queue = queue;
+    }
 
-        var factory = new ConnectionFactory
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        ConnectionFactory factory = new ConnectionFactory
         {
-            HostName = rabbitHost
+            HostName = _host
         };
 
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
+        await using IConnection connection = await factory.CreateConnectionAsync(stoppingToken);
+        await using IChannel channel = await connection.CreateChannelAsync(null, stoppingToken);
 
-        // Ensure topology exists: exchange -> queue -> consumer.
         await channel.ExchangeDeclareAsync(
-            exchange: ExchangeName,
+            exchange: _exchange,
             type: ExchangeType.Direct,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: stoppingToken
+        );
 
         await channel.QueueDeclareAsync(
-            queue: QueueName,
+            queue: _queue,
             durable: true,
             exclusive: false,
             autoDelete: false,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: stoppingToken
+        );
 
         await channel.QueueBindAsync(
-            queue: QueueName,
-            exchange: ExchangeName,
+            queue: _queue,
+            exchange: _exchange,
             routingKey: "",
-            cancellationToken: CancellationToken.None);
+            cancellationToken: stoppingToken
+        );
 
-        // Competing consumers fairness: process 1 message at a time.
         await channel.BasicQosAsync(
             prefetchSize: 0,
             prefetchCount: 1,
             global: false,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: stoppingToken
+        );
 
-        using var redis = await ConnectionMultiplexer.ConnectAsync(redisConnectionString);
-        var db = redis.GetDatabase();
-
-        Console.WriteLine($"RankCalculator started. RabbitMQ={rabbitHost}, Redis={redisConnectionString}");
-        Console.WriteLine("Press Ctrl+C to exit.");
-
-        // Для демонстрации "не завершено" фейковой задержкой.
-        // const int delayMs = 3000;
-        // Console.WriteLine($"Artificial delay enabled: {delayMs} ms per message");
-
-        var shutdownTcs = new TaskCompletionSource();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            shutdownTcs.TrySetResult();
-        };
-
-        var consumer = new AsyncEventingBasicConsumer(channel);
+        AsyncEventingBasicConsumer consumer = new(channel);
         consumer.ReceivedAsync += async (_, eventArgs) =>
         {
-            var id = Encoding.UTF8.GetString(eventArgs.Body.ToArray()).Trim();
-            try
-            {
-                var text = db.StringGet("TEXT-" + id);
-                //if (delayMs > 0)
-                // await Task.Delay(delayMs);
+            string id = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
 
-                var rank = CalculateRank(text.HasValue ? text.ToString() : string.Empty);
-                db.StringSet("RANK-" + id, rank.ToString());
-                Console.WriteLine($"Processed id={id}, rank={rank}");
-            }
-            catch (Exception ex)
-            {
-                // For lab purposes: log error and ack to avoid infinite retry loops.
-                Console.WriteLine($"Failed to process message id={id}. Error: {ex.Message}");
-            }
-            finally
-            {
-                await channel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false);
-            }
+            IDatabase db = _redis.GetDatabase();
+
+            string textKey = "TEXT-" + id;
+            string rankKey = "RANK-" + id;
+
+            RedisValue textRaw = await db.StringGetAsync(textKey);
+            string text = textRaw.IsNull ? "" : textRaw.ToString();
+
+            double rank = CalcRank(text);
+            rank = Math.Round(rank, 4);
+
+            await db.StringSetAsync(rankKey, rank);
+
+            await channel.BasicAckAsync(eventArgs.DeliveryTag, false);
         };
 
-        var consumerTag = await channel.BasicConsumeAsync(
-            queue: QueueName,
+        await channel.BasicConsumeAsync(
+            queue: _queue,
             autoAck: false,
             consumer: consumer,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: stoppingToken
+        );
 
-        await shutdownTcs.Task;
-
-        await channel.BasicCancelAsync(consumerTag, cancellationToken: CancellationToken.None);
-        await redis.CloseAsync();
+        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private static double CalculateRank(string text)
+    private static double CalcRank(string text)
     {
-        if (string.IsNullOrEmpty(text))
-            return 0;
+        double noNormal = 0.0;
+        double result = 0.0;
 
-        int nonAlphabetic = 0;
-        foreach (char c in text)
+        if (text.Length == 0)
         {
-            if (!char.IsLetter(c))
-                nonAlphabetic++;
+            return 0.0;
         }
 
-        return (double)nonAlphabetic / text.Length;
+        foreach (char value in text)
+        {
+            if (!char.IsLetter(value))
+            {
+                noNormal++;
+            }
+        }
+
+        result = noNormal / text.Length;
+
+        return result;
     }
 }

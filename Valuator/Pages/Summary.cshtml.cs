@@ -6,39 +6,38 @@ namespace Valuator.Pages;
 public class SummaryModel : PageModel
 {
     private readonly ILogger<SummaryModel> _logger;
-    private readonly IDatabase _redis;
+    private readonly IDatabase _db;
 
     public SummaryModel(ILogger<SummaryModel> logger, IConnectionMultiplexer redis)
     {
         _logger = logger;
-        _redis = redis.GetDatabase();
+        _db = redis.GetDatabase();
     }
 
     public double Rank { get; set; }
-    public bool IsRankCompleted { get; private set; }
     public double Similarity { get; set; }
+    public bool RankReady { get; set; }
 
     public void OnGet(string id)
     {
-        _logger.LogDebug(id ?? string.Empty);
+        _logger.LogDebug(id);
 
-        if (!string.IsNullOrEmpty(id))
+        if (string.IsNullOrWhiteSpace(id))
         {
-            var rankValue = _redis.StringGet("RANK-" + id);
-            var similarityValue = _redis.StringGet("SIMILARITY-" + id);
-
-            if (rankValue.HasValue && double.TryParse(rankValue, out double rank))
-            {
-                Rank = rank;
-                IsRankCompleted = true;
-            }
-            else
-            {
-                IsRankCompleted = false;
-            }
-
-            if (similarityValue.HasValue && double.TryParse(similarityValue, out double similarity))
-                Similarity = similarity;
+            Rank = 0.0;
+            Similarity = 0.0;
+            RankReady = false;
+            return;
         }
+
+        string rankKey = "RANK-" + id;
+        string similarityKey = "SIMILARITY-" + id;
+
+        RedisValue rankRaw = _db.StringGet(rankKey);
+        RankReady = !rankRaw.IsNull;
+        Rank = rankRaw.IsNull ? 0.0 : (double)rankRaw;
+
+        RedisValue simRaw = _db.StringGet(similarityKey);
+        Similarity = simRaw.IsNull ? 0.0 : (double)simRaw;
     }
 }

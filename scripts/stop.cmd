@@ -1,17 +1,44 @@
 @echo off
-chcp 65001 >nul
-cd /d "%~dp0\.."
+setlocal EnableExtensions
 
-echo Остановка Nginx в Docker...
-docker rm -f my-nginx 2>nul
+cd /d "%~dp0.."
+set "ROOT=%cd%"
+set "PIDDIR=%ROOT%\scripts\.pids"
 
-echo Остановка Valuator (порты 5001, 5002)...
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5001 :5002" ^| findstr "LISTENING"') do (
-    taskkill /F /PID %%a 2>nul
-)
+echo Closing saved process windows...
+call :killPid "%PIDDIR%\valuator-5001.pid"
+call :killPid "%PIDDIR%\valuator-5002.pid"
+call :killPid "%PIDDIR%\rank-1.pid"
+call :killPid "%PIDDIR%\rank-2.pid"
 
-echo Остановка RankCalculator...
-powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'dotnet.exe' -and ( $_.CommandLine -like '*RankCalculator.csproj*' -or $_.CommandLine -like '*--project RankCalculator*' ) } | ForEach-Object { Stop-Process -Force -Id $_.ProcessId }" 2>nul
+echo Fallback: stopping Valuator by ports...
+call :killPort 5001
+call :killPort 5002
 
-echo Готово.
+echo Stopping Docker containers...
+docker stop nginx-lb >nul 2>&1
+docker stop pa3-rabbitmq >nul 2>&1
+docker stop pa3-redis >nul 2>&1
+
+echo Done.
 pause
+exit /b 0
+
+:killPid
+if not exist "%~1" exit /b 0
+set /p PID=<"%~1"
+if not "%PID%"=="" (
+    taskkill /PID %PID% /T >nul 2>&1
+    timeout /t 1 /nobreak >nul
+    taskkill /PID %PID% /T /F >nul 2>&1
+)
+del /q "%~1" >nul 2>&1
+exit /b 0
+
+:killPort
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%~1 .*LISTENING"') do (
+    taskkill /PID %%P /T >nul 2>&1
+    timeout /t 1 /nobreak >nul
+    taskkill /PID %%P /T /F >nul 2>&1
+)
+exit /b 0
