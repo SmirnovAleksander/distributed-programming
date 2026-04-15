@@ -11,24 +11,13 @@ public class Program
 
         builder.Services.AddRazorPages();
 
-        var redisConnectionString =
-            builder.Configuration.GetValue<string>("Redis:ConnectionString")
-            ?? throw new InvalidOperationException("Missing Redis:ConnectionString in appsettings.json");
+        var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString") ?? "127.0.0.1:6379";
+        var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMq:HostName") ?? "127.0.0.1";
+        var rabbitMqExchange = builder.Configuration.GetValue<string>("RabbitMq:ExchangeName") ?? "valuator.processing.rank";
+        var rabbitMqQueue = builder.Configuration.GetValue<string>("RabbitMq:QueueName") ?? "valuator.processing.rank";
 
-        var rabbitMqHost =
-            builder.Configuration.GetValue<string>("RabbitMq:HostName")
-            ?? throw new InvalidOperationException("Missing RabbitMq:HostName in appsettings.json");
-
-        var rabbitMqExchange =
-            builder.Configuration.GetValue<string>("RabbitMq:ExchangeName")
-            ?? throw new InvalidOperationException("Missing RabbitMq:ExchangeName in appsettings.json");
-
-        var rabbitMqQueue =
-            builder.Configuration.GetValue<string>("RabbitMq:QueueName")
-            ?? throw new InvalidOperationException("Missing RabbitMq:QueueName in appsettings.json");
-
-        var mux = ConnectionMultiplexer.Connect(redisConnectionString);
-        builder.Services.AddSingleton<IConnectionMultiplexer>(mux);
+        builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
+            ConnectionMultiplexer.Connect(redisConnectionString));
 
         builder.Services.AddSingleton(new RabbitMqOptions
         {

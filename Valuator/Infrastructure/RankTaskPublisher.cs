@@ -3,6 +3,13 @@ using RabbitMQ.Client;
 
 namespace Valuator.Infrastructure;
 
+public class RabbitMqOptions
+{
+    public string HostName { get; set; } = string.Empty;
+    public string ExchangeName { get; set; } = string.Empty;
+    public string QueueName { get; set; } = string.Empty;
+}
+
 public class RankTaskPublisher
 {
     private readonly RabbitMqOptions _options;
@@ -24,7 +31,7 @@ public class RankTaskPublisher
 
         await channel.ExchangeDeclareAsync(
             exchange: _options.ExchangeName,
-            type: ExchangeType.Direct //маршутизуются по routingKey
+            type: ExchangeType.Direct
         );
 
         await channel.QueueDeclareAsync(

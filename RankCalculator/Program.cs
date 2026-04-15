@@ -1,149 +1,79 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using StackExchange.Redis;
-using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-var redisConnectionString =
-    builder.Configuration.GetValue<string>("Redis:ConnectionString")
-    ?? throw new InvalidOperationException("Missing Redis:ConnectionString");
+var settings = new ServiceSettings(
+    builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Redis connection missing"),
+    builder.Configuration["RabbitMq:HostName"] ?? "localhost",
+    builder.Configuration["RabbitMq:ExchangeName"] ?? "rank-exchange",
+    builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue"
+);
 
-var rabbitMqHost =
-    builder.Configuration.GetValue<string>("RabbitMq:HostName")
-    ?? throw new InvalidOperationException("Missing RabbitMq:HostName");
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(settings.RedisUrl));
+builder.Services.AddHostedService(sp => new RankCalculatorService(
+    sp.GetRequiredService<IConnectionMultiplexer>(),
+    settings));
 
-var rabbitMqExchange =
-    builder.Configuration.GetValue<string>("RabbitMq:ExchangeName")
-    ?? throw new InvalidOperationException("Missing RabbitMq:ExchangeName");
+var app = builder.Build();
+await app.RunAsync();
 
-var rabbitMqQueue =
-    builder.Configuration.GetValue<string>("RabbitMq:QueueName")
-    ?? throw new InvalidOperationException("Missing RabbitMq:QueueName");
+public record ServiceSettings(string RedisUrl, string MqHost, string Exchange, string Queue);
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    ConnectionMultiplexer.Connect(redisConnectionString));
-
-builder.Services.AddHostedService(sp =>
-    new Worker(
-        sp.GetRequiredService<IConnectionMultiplexer>(),
-        rabbitMqHost,
-        rabbitMqExchange,
-        rabbitMqQueue));
-
-await builder.Build().RunAsync();
-
-public class Worker : BackgroundService
+public class RankCalculatorService : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
-    private readonly string _host;
-    private readonly string _exchange;
-    private readonly string _queue;
+    private readonly ServiceSettings _cfg;
 
-    public Worker(
-        IConnectionMultiplexer redis,
-        string host,
-        string exchange,
-        string queue)
+    public RankCalculatorService(IConnectionMultiplexer redis, ServiceSettings settings)
     {
         _redis = redis;
-        _host = host;
-        _exchange = exchange;
-        _queue = queue;
+        _cfg = settings;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        ConnectionFactory factory = new ConnectionFactory
+        var factory = new ConnectionFactory { HostName = _cfg.MqHost };
+
+        using var connection = await factory.CreateConnectionAsync(ct);
+        using var channel = await connection.CreateChannelAsync(null, ct);
+
+        await channel.ExchangeDeclareAsync(_cfg.Exchange, ExchangeType.Direct, cancellationToken: ct);
+        await channel.QueueDeclareAsync(_cfg.Queue, true, false, false, cancellationToken: ct);
+        await channel.QueueBindAsync(_cfg.Queue, _cfg.Exchange, string.Empty, cancellationToken: ct);
+
+        await channel.BasicQosAsync(0, 1, false, ct);
+
+        var consumer = new AsyncEventingBasicConsumer(channel);
+        consumer.ReceivedAsync += async (_, ea) =>
         {
-            HostName = _host
+            var id = Encoding.UTF8.GetString(ea.Body.ToArray());
+            var db = _redis.GetDatabase();
+
+            var textData = await db.StringGetAsync($"TEXT-{id}");
+            var text = textData.HasValue ? textData.ToString() : string.Empty;
+
+            var rank = CalculateScore(text);
+            await db.StringSetAsync($"RANK-{id}", Math.Round(rank, 4));
+
+            await channel.BasicAckAsync(ea.DeliveryTag, false);
         };
 
-        await using IConnection connection = await factory.CreateConnectionAsync(stoppingToken);
-        await using IChannel channel = await connection.CreateChannelAsync(null, stoppingToken);
+        await channel.BasicConsumeAsync(_cfg.Queue, false, consumer, ct);
 
-        await channel.ExchangeDeclareAsync(
-            exchange: _exchange,
-            type: ExchangeType.Direct,
-            cancellationToken: stoppingToken
-        );
-
-        await channel.QueueDeclareAsync(
-            queue: _queue,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            cancellationToken: stoppingToken
-        );
-
-        await channel.QueueBindAsync(
-            queue: _queue,
-            exchange: _exchange,
-            routingKey: "",
-            cancellationToken: stoppingToken
-        );
-
-        await channel.BasicQosAsync(
-            prefetchSize: 0,
-            prefetchCount: 1,
-            global: false,
-            cancellationToken: stoppingToken
-        );
-
-        AsyncEventingBasicConsumer consumer = new(channel);
-        consumer.ReceivedAsync += async (_, eventArgs) =>
-        {
-            string id = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-
-            IDatabase db = _redis.GetDatabase();
-
-            string textKey = "TEXT-" + id;
-            string rankKey = "RANK-" + id;
-
-            RedisValue textRaw = await db.StringGetAsync(textKey);
-            string text = textRaw.IsNull ? "" : textRaw.ToString();
-
-            double rank = CalcRank(text);
-            rank = Math.Round(rank, 4);
-
-            await db.StringSetAsync(rankKey, rank);
-
-            await channel.BasicAckAsync(eventArgs.DeliveryTag, false);
-        };
-
-        await channel.BasicConsumeAsync(
-            queue: _queue,
-            autoAck: false,
-            consumer: consumer,
-            cancellationToken: stoppingToken
-        );
-
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        await Task.Delay(Timeout.Infinite, ct);
     }
 
-    private static double CalcRank(string text)
+    private static double CalculateScore(string input)
     {
-        double noNormal = 0.0;
-        double result = 0.0;
+        if (string.IsNullOrEmpty(input)) return 0;
 
-        if (text.Length == 0)
-        {
-            return 0.0;
-        }
-
-        foreach (char value in text)
-        {
-            if (!char.IsLetter(value))
-            {
-                noNormal++;
-            }
-        }
-
-        result = noNormal / text.Length;
-
-        return result;
+        int symbolsCount = input.Count(c => !char.IsLetter(c));
+        return (double)symbolsCount / input.Length;
     }
 }
