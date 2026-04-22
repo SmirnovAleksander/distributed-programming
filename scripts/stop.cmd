@@ -10,6 +10,8 @@ call :killPid "%PIDDIR%\valuator-5001.pid"
 call :killPid "%PIDDIR%\valuator-5002.pid"
 call :killPid "%PIDDIR%\rank-1.pid"
 call :killPid "%PIDDIR%\rank-2.pid"
+call :killPid "%PIDDIR%\eventslogger-1.pid"
+call :killPid "%PIDDIR%\eventslogger-2.pid"
 
 echo Fallback: stopping Valuator by ports...
 call :killPort 5001

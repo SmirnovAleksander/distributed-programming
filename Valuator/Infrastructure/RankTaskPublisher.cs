@@ -10,6 +10,12 @@ public class RabbitMqOptions
     public string QueueName { get; set; } = string.Empty;
 }
 
+public class EventsOptions
+{
+    public string HostName { get; set; } = string.Empty;
+    public string ExchangeName { get; set; } = string.Empty;
+}
+
 public class RankTaskPublisher
 {
     private readonly RabbitMqOptions _options;
@@ -54,6 +60,41 @@ public class RankTaskPublisher
             routingKey: "",
             mandatory: false,
             body: message
+        );
+    }
+}
+
+public class EventsPublisher
+{
+    private readonly EventsOptions _options;
+
+    public EventsPublisher(EventsOptions options)
+    {
+        _options = options;
+    }
+
+    public async Task PublishEventAsync(string eventType, string message)
+    {
+        ConnectionFactory factory = new ConnectionFactory
+        {
+            HostName = _options.HostName
+        };
+
+        await using IConnection connection = await factory.CreateConnectionAsync();
+        await using IChannel channel = await connection.CreateChannelAsync();
+
+        await channel.ExchangeDeclareAsync(
+            exchange: $"{_options.ExchangeName}.{eventType}",
+            type: ExchangeType.Fanout
+        );
+
+        byte[] body = Encoding.UTF8.GetBytes(message);
+
+        await channel.BasicPublishAsync(
+            exchange: $"{_options.ExchangeName}.{eventType}",
+            routingKey: "",
+            mandatory: false,
+            body: body
         );
     }
 }

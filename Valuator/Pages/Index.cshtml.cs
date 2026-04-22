@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using StackExchange.Redis;
@@ -10,15 +11,18 @@ public class IndexModel : PageModel
     private readonly ILogger<IndexModel> _logger;
     private readonly IDatabase _db;
     private readonly RankTaskPublisher _publisher;
+    private readonly EventsPublisher _eventsPublisher;
 
     public IndexModel(
         ILogger<IndexModel> logger,
         IConnectionMultiplexer redis,
-        RankTaskPublisher publisher)
+        RankTaskPublisher publisher,
+        EventsPublisher eventsPublisher)
     {
         _logger = logger;
         _db = redis.GetDatabase();
         _publisher = publisher;
+        _eventsPublisher = eventsPublisher;
     }
 
     public void OnGet()
@@ -45,8 +49,14 @@ public class IndexModel : PageModel
 
         await _db.StringSetAsync(similarityKey, similarity);
 
+        var similarityEvent = new SimilarityCalculatedEvent(id, similarity);
+        var eventJson = JsonSerializer.Serialize(similarityEvent);
+        await _eventsPublisher.PublishEventAsync("similarity", eventJson);
+
         await _publisher.PublishAsync(id);
 
         return Redirect($"summary?id={id}");
     }
 }
+
+public record SimilarityCalculatedEvent(string Id, int Similarity);

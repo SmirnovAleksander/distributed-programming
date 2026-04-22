@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,7 +13,8 @@ var settings = new ServiceSettings(
     builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Redis connection missing"),
     builder.Configuration["RabbitMq:HostName"] ?? "localhost",
     builder.Configuration["RabbitMq:ExchangeName"] ?? "rank-exchange",
-    builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue"
+    builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue",
+    builder.Configuration["RabbitMq:EventsExchangeName"] ?? "events"
 );
 
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(settings.RedisUrl));
@@ -23,7 +25,7 @@ builder.Services.AddHostedService(sp => new RankCalculatorService(
 var app = builder.Build();
 await app.RunAsync();
 
-public record ServiceSettings(string RedisUrl, string MqHost, string Exchange, string Queue);
+public record ServiceSettings(string RedisUrl, string MqHost, string Exchange, string Queue, string EventsExchange);
 
 public class RankCalculatorService : BackgroundService
 {
@@ -41,11 +43,13 @@ public class RankCalculatorService : BackgroundService
         var factory = new ConnectionFactory { HostName = _cfg.MqHost };
 
         using var connection = await factory.CreateConnectionAsync(ct);
-        using var channel = await connection.CreateChannelAsync(null, ct);
+        var channel = await connection.CreateChannelAsync(null, ct);
 
         await channel.ExchangeDeclareAsync(_cfg.Exchange, ExchangeType.Direct, cancellationToken: ct);
         await channel.QueueDeclareAsync(_cfg.Queue, true, false, false, cancellationToken: ct);
         await channel.QueueBindAsync(_cfg.Queue, _cfg.Exchange, string.Empty, cancellationToken: ct);
+
+        await channel.ExchangeDeclareAsync($"{_cfg.EventsExchange}.rank", ExchangeType.Fanout, cancellationToken: ct);
 
         await channel.BasicQosAsync(0, 1, false, ct);
 
@@ -59,7 +63,13 @@ public class RankCalculatorService : BackgroundService
             var text = textData.HasValue ? textData.ToString() : string.Empty;
 
             var rank = CalculateScore(text);
-            await db.StringSetAsync($"RANK-{id}", Math.Round(rank, 4));
+            rank = Math.Round(rank, 4);
+            await db.StringSetAsync($"RANK-{id}", rank);
+
+            var eventMessage = new RankCalculatedEvent(id, rank);
+            var eventJson = JsonSerializer.Serialize(eventMessage);
+            var eventBody = Encoding.UTF8.GetBytes(eventJson);
+            await channel.BasicPublishAsync($"{_cfg.EventsExchange}.rank", "RankCalculated", false, eventBody);
 
             await channel.BasicAckAsync(ea.DeliveryTag, false);
         };
@@ -77,3 +87,5 @@ public class RankCalculatorService : BackgroundService
         return (double)symbolsCount / input.Length;
     }
 }
+
+public record RankCalculatedEvent(string Id, double Rank);

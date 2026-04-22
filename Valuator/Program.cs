@@ -15,6 +15,7 @@ public class Program
         var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMq:HostName") ?? "127.0.0.1";
         var rabbitMqExchange = builder.Configuration.GetValue<string>("RabbitMq:ExchangeName") ?? "valuator.processing.rank";
         var rabbitMqQueue = builder.Configuration.GetValue<string>("RabbitMq:QueueName") ?? "valuator.processing.rank";
+        var rabbitMqEventsExchange = builder.Configuration.GetValue<string>("RabbitMq:EventsExchangeName") ?? "events";
 
         builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
             ConnectionMultiplexer.Connect(redisConnectionString));
@@ -26,7 +27,14 @@ public class Program
             QueueName = rabbitMqQueue
         });
 
+        builder.Services.AddSingleton(new EventsOptions
+        {
+            HostName = rabbitMqHost,
+            ExchangeName = rabbitMqEventsExchange
+        });
+
         builder.Services.AddSingleton<RankTaskPublisher>();
+        builder.Services.AddSingleton<EventsPublisher>();
 
         var app = builder.Build();
 
