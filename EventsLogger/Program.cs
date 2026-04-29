@@ -14,33 +14,27 @@ await using var channel = await connection.CreateChannelAsync();
 
 await channel.ExchangeDeclareAsync(
     exchange: $"{eventsExchange}.rank",
-    type: ExchangeType.Fanout,
-    cancellationToken: CancellationToken.None);
+    type: ExchangeType.Fanout);
 
 await channel.ExchangeDeclareAsync(
     exchange: $"{eventsExchange}.similarity",
-    type: ExchangeType.Fanout,
-    cancellationToken: CancellationToken.None);
+    type: ExchangeType.Fanout);
 
 //rank
-var rankQueueResult = await channel.QueueDeclareAsync(
-    cancellationToken: CancellationToken.None);
+var rankQueueResult = await channel.QueueDeclareAsync();
 var rankQueueName = rankQueueResult.QueueName;
 await channel.QueueBindAsync(
     queue: rankQueueName,
     exchange: $"{eventsExchange}.rank",
-    routingKey: "RankCalculated",
-    cancellationToken: CancellationToken.None);
+    routingKey: "RankCalculated");
 
 //similarity
-var similarityQueueResult = await channel.QueueDeclareAsync(
-    cancellationToken: CancellationToken.None);
+var similarityQueueResult = await channel.QueueDeclareAsync();
 var similarityQueueName = similarityQueueResult.QueueName;
 await channel.QueueBindAsync(
     queue: similarityQueueName,
     exchange: $"{eventsExchange}.similarity",
-    routingKey: "SimilarityCalculated",
-    cancellationToken: CancellationToken.None);
+    routingKey: "SimilarityCalculated");
 
 //rank
 var rankConsumer = new AsyncEventingBasicConsumer(channel);
@@ -52,19 +46,18 @@ rankConsumer.ReceivedAsync += async (_, ea) =>
         var message = Encoding.UTF8.GetString(body);
         var evt = JsonSerializer.Deserialize<RankCalculatedEvent>(message);
         Console.WriteLine($"[RankCalculated] Id: {evt?.Id}, Rank: {evt?.Rank}");
-        await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false, cancellationToken: CancellationToken.None);
+        await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
     }
     catch
     {
-        await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true, cancellationToken: CancellationToken.None);
+        await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
     }
 };
 
 await channel.BasicConsumeAsync(
     queue: rankQueueName,
     autoAck: false,
-    consumer: rankConsumer,
-    cancellationToken: CancellationToken.None);
+    consumer: rankConsumer);
 Console.WriteLine($"Listening for RankCalculated events on queue: {rankQueueName}");
 
 //similarity
@@ -77,23 +70,22 @@ similarityConsumer.ReceivedAsync += async (_, ea) =>
         var message = Encoding.UTF8.GetString(body);
         var evt = JsonSerializer.Deserialize<SimilarityCalculatedEvent>(message);
         Console.WriteLine($"[SimilarityCalculated] Id: {evt?.Id}, Similarity: {evt?.Similarity}");
-        await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false, cancellationToken: CancellationToken.None);
+        await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
     }
     catch
     {
-        await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true, cancellationToken: CancellationToken.None);
+        await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
     }
 };
 
 await channel.BasicConsumeAsync(
     queue: similarityQueueName,
     autoAck: false,
-    consumer: similarityConsumer,
-    cancellationToken: CancellationToken.None);
+    consumer: similarityConsumer);
 Console.WriteLine($"Listening for SimilarityCalculated events on queue: {similarityQueueName}");
 
 Console.WriteLine("EventsLogger is running. Press Ctrl+C to exit.");
-await Task.Delay(Timeout.Infinite, CancellationToken.None);
+await Task.Delay(Timeout.Infinite);
 
 public record RankCalculatedEvent(string Id, double Rank);
 public record SimilarityCalculatedEvent(string Id, int Similarity);
