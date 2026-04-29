@@ -47,8 +47,6 @@ public class RankCalculatorService : BackgroundService
         await channel.QueueDeclareAsync(_cfg.Queue, true, false, false, cancellationToken: ct);
         await channel.QueueBindAsync(_cfg.Queue, _cfg.Exchange, string.Empty, cancellationToken: ct);
 
-        await channel.BasicQosAsync(0, 1, false, ct);
-
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
