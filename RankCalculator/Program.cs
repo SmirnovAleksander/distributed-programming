@@ -50,16 +50,23 @@ public class RankCalculatorService : BackgroundService
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
-            var id = Encoding.UTF8.GetString(ea.Body.ToArray());
-            var db = _redis.GetDatabase();
+            try
+            {
+                var id = Encoding.UTF8.GetString(ea.Body.ToArray());
+                var db = _redis.GetDatabase();
 
-            var textData = await db.StringGetAsync($"TEXT-{id}");
-            var text = textData.HasValue ? textData.ToString() : string.Empty;
+                var textData = await db.StringGetAsync($"TEXT-{id}");
+                var text = textData.HasValue ? textData.ToString() : string.Empty;
 
-            var rank = CalculateScore(text);
-            await db.StringSetAsync($"RANK-{id}", Math.Round(rank, 4));
+                var rank = CalculateScore(text);
+                await db.StringSetAsync($"RANK-{id}", Math.Round(rank, 4));
 
-            await channel.BasicAckAsync(ea.DeliveryTag, false);
+                await channel.BasicAckAsync(ea.DeliveryTag, false);
+            }
+            catch
+            {
+                await channel.BasicNackAsync(ea.DeliveryTag, false, true);
+            }
         };
 
         await channel.BasicConsumeAsync(_cfg.Queue, false, consumer, ct);
