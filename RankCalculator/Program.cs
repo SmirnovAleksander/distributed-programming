@@ -45,36 +45,67 @@ public class RankCalculatorService : BackgroundService
         using var connection = await factory.CreateConnectionAsync(ct);
         var channel = await connection.CreateChannelAsync(null, ct);
 
-        await channel.ExchangeDeclareAsync(_cfg.Exchange, ExchangeType.Direct, cancellationToken: ct);
-        await channel.QueueDeclareAsync(_cfg.Queue, true, false, false, cancellationToken: ct);
-        await channel.QueueBindAsync(_cfg.Queue, _cfg.Exchange, string.Empty, cancellationToken: ct);
+        await channel.ExchangeDeclareAsync(
+            exchange: _cfg.Exchange,
+            type: ExchangeType.Direct,
+            cancellationToken: ct);
 
-        await channel.ExchangeDeclareAsync($"{_cfg.EventsExchange}.rank", ExchangeType.Fanout, cancellationToken: ct);
+        await channel.QueueDeclareAsync(
+            queue: _cfg.Queue,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            cancellationToken: ct);
 
-        await channel.BasicQosAsync(0, 1, false, ct);
+        await channel.QueueBindAsync(
+            queue: _cfg.Queue,
+            exchange: _cfg.Exchange,
+            routingKey: string.Empty,
+            cancellationToken: ct);
+
+        await channel.ExchangeDeclareAsync(
+            exchange: $"{_cfg.EventsExchange}.rank",
+            type: ExchangeType.Fanout,
+            cancellationToken: ct);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
-            var id = Encoding.UTF8.GetString(ea.Body.ToArray());
-            var db = _redis.GetDatabase();
+            try
+            {
+                var id = Encoding.UTF8.GetString(ea.Body.ToArray());
+                var db = _redis.GetDatabase();
 
-            var textData = await db.StringGetAsync($"TEXT-{id}");
-            var text = textData.HasValue ? textData.ToString() : string.Empty;
+                var textData = await db.StringGetAsync($"TEXT-{id}");
+                var text = textData.HasValue ? textData.ToString() : string.Empty;
 
-            var rank = CalculateScore(text);
-            rank = Math.Round(rank, 4);
-            await db.StringSetAsync($"RANK-{id}", rank);
+                var rank = CalculateScore(text);
+                rank = Math.Round(rank, 4);
+                await db.StringSetAsync($"RANK-{id}", rank);
 
-            var eventMessage = new RankCalculatedEvent(id, rank);
-            var eventJson = JsonSerializer.Serialize(eventMessage);
-            var eventBody = Encoding.UTF8.GetBytes(eventJson);
-            await channel.BasicPublishAsync($"{_cfg.EventsExchange}.rank", "RankCalculated", false, eventBody);
+                var eventMessage = new RankCalculatedEvent(id, rank);
+                var eventJson = JsonSerializer.Serialize(eventMessage);
+                var eventBody = Encoding.UTF8.GetBytes(eventJson);
 
-            await channel.BasicAckAsync(ea.DeliveryTag, false);
+                await channel.BasicPublishAsync(
+                    exchange: $"{_cfg.EventsExchange}.rank",
+                    routingKey: "RankCalculated",
+                    mandatory: false,
+                    body: eventBody);
+
+                await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
+            }
+            catch
+            {
+                await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
+            }
         };
 
-        await channel.BasicConsumeAsync(_cfg.Queue, false, consumer, ct);
+        await channel.BasicConsumeAsync(
+            queue: _cfg.Queue,
+            autoAck: false,
+            consumer: consumer,
+            cancellationToken: ct);
 
         await Task.Delay(Timeout.Infinite, ct);
     }
