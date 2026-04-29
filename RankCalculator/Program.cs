@@ -43,9 +43,23 @@ public class RankCalculatorService : BackgroundService
         using var connection = await factory.CreateConnectionAsync(ct);
         using var channel = await connection.CreateChannelAsync(null, ct);
 
-        await channel.ExchangeDeclareAsync(_cfg.Exchange, ExchangeType.Direct, cancellationToken: ct);
-        await channel.QueueDeclareAsync(_cfg.Queue, true, false, false, cancellationToken: ct);
-        await channel.QueueBindAsync(_cfg.Queue, _cfg.Exchange, string.Empty, cancellationToken: ct);
+        await channel.ExchangeDeclareAsync(
+            exchange: _cfg.Exchange,
+            type: ExchangeType.Direct,
+            cancellationToken: ct);
+
+        await channel.QueueDeclareAsync(
+            queue: _cfg.Queue,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            cancellationToken: ct);
+
+        await channel.QueueBindAsync(
+            queue: _cfg.Queue,
+            exchange: _cfg.Exchange,
+            routingKey: string.Empty,
+            cancellationToken: ct);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
