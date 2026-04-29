@@ -75,15 +75,15 @@ public class RankCalculatorService : BackgroundService
                 var rank = CalculateScore(text);
                 await db.StringSetAsync($"RANK-{id}", Math.Round(rank, 4));
 
-                await channel.BasicAckAsync(ea.DeliveryTag, false);
+                await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
             }
             catch
             {
-                await channel.BasicNackAsync(ea.DeliveryTag, false, true);
+                await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
             }
         };
 
-        await channel.BasicConsumeAsync(_cfg.Queue, false, consumer, ct);
+        await channel.BasicConsumeAsync(queue: _cfg.Queue, autoAck: false, consumer: consumer, cancellationToken: ct);
 
         await Task.Delay(Timeout.Infinite, ct);
     }
