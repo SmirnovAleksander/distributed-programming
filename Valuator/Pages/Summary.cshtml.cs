@@ -18,9 +18,13 @@ public class SummaryModel : PageModel
     public double Similarity { get; set; }
     public bool RankReady { get; set; }
 
+    public string? RecordId { get; set; }
+
     public void OnGet(string id)
     {
         _logger.LogDebug(id);
+
+        RecordId = string.IsNullOrWhiteSpace(id) ? null : id;
 
         if (string.IsNullOrWhiteSpace(id))
         {

@@ -1,13 +1,56 @@
 @page
 @model Valuator.Pages.SummaryModel
 @{
+    ViewData["Title"] = "Итог";
 }
+
 @if (!Model.RankReady)
 {
-    <p>Оценка содержания не завершена</p>
+    <p id="rank-pending">Оценка содержания не завершена</p>
+    <p id="rank-result" class="d-none"><span id="rank-value"></span></p>
 }
 else
 {
-    <p>Оценка содержания: @Model.Rank</p>
+    <p id="rank-result">Оценка содержания: <span id="rank-value">@Model.Rank</span></p>
 }
+
 <p>Плагиат: @Model.Similarity</p>
+
+@if (!string.IsNullOrEmpty(Model.RecordId) && !Model.RankReady)
+{
+    @section Scripts {
+        <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+        <script>
+            (function () {
+                var recordId = "@Model.RecordId";
+                var hubUrl = new URL("/rankHub", window.location.origin).toString();
+
+                var pendingEl = document.getElementById("rank-pending");
+                var resultEl = document.getElementById("rank-result");
+                var valueEl = document.getElementById("rank-value");
+
+                function showRank(rank) {
+                    if (!valueEl || !resultEl) return;
+                    valueEl.textContent = rank;
+                    resultEl.classList.remove("d-none");
+                    if (pendingEl) pendingEl.classList.add("d-none");
+                }
+
+                var connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).withAutomaticReconnect().build();
+
+                connection.on("RankReady", function (rank) {
+                    showRank(rank);
+                });
+
+                connection.start()
+                    .then(function () { return connection.invoke("Subscribe", recordId); })
+                    .then(function () { return connection.invoke("GetRankIfReady", recordId); })
+                    .then(function (rank) {
+                        if (rank !== null && rank !== undefined)
+                            showRank(rank);
+                    })
+                    .catch(function (err) { console.error(err); });
+            })();
+        </script>
+    }
+}

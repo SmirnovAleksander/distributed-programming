@@ -1,4 +1,5 @@
 using StackExchange.Redis;
+using Valuator.Hubs;
 using Valuator.Infrastructure;
 
 namespace Valuator;
@@ -10,6 +11,7 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         builder.Services.AddRazorPages();
+        builder.Services.AddSignalR();
 
         var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString") ?? "127.0.0.1:6379";
         var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMq:HostName") ?? "127.0.0.1";
@@ -36,6 +38,8 @@ public class Program
         builder.Services.AddSingleton<RankTaskPublisher>();
         builder.Services.AddSingleton<EventsPublisher>();
 
+        builder.Services.AddHostedService<RankCalculatedEventConsumer>();
+
         var app = builder.Build();
 
         if (!app.Environment.IsDevelopment())
@@ -47,6 +51,7 @@ public class Program
         app.UseRouting();
         app.UseAuthorization();
         app.MapRazorPages();
+        app.MapHub<RankHub>("/rankHub");
         app.Run();
     }
 }

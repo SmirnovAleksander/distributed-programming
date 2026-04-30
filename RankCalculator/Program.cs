@@ -74,6 +74,11 @@ public class RankCalculatorService : BackgroundService
             try
             {
                 var id = Encoding.UTF8.GetString(ea.Body.ToArray());
+
+                TimeSpan interval = TimeSpan.FromSeconds(Random.Shared.Next(3, 16));
+                Console.WriteLine($"Waiting {interval}");
+                await Task.Delay(interval, ct);
+
                 var db = _redis.GetDatabase();
 
                 var textData = await db.StringGetAsync($"TEXT-{id}");
