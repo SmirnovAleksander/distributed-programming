@@ -17,14 +17,12 @@ public class SummaryModel : PageModel
     public double Rank { get; set; }
     public double Similarity { get; set; }
     public bool RankReady { get; set; }
-
-    public string? RecordId { get; set; }
+    public string SummaryId { get; set; } = string.Empty;
 
     public void OnGet(string id)
     {
         _logger.LogDebug(id);
-
-        RecordId = string.IsNullOrWhiteSpace(id) ? null : id;
+        SummaryId = id ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(id))
         {

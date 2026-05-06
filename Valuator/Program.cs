@@ -1,5 +1,7 @@
 using StackExchange.Redis;
+using Valuator.Hubs;
 using Valuator.Infrastructure;
+using Valuator.Services;
 
 namespace Valuator;
 
@@ -36,8 +38,7 @@ public class Program
 
         builder.Services.AddSingleton<RankTaskPublisher>();
         builder.Services.AddSingleton<EventsPublisher>();
-
-        builder.Services.AddHostedService<RankCalculatedEventConsumer>();
+        builder.Services.AddHostedService<RankNotificationService>();
 
         var app = builder.Build();
 
@@ -50,7 +51,7 @@ public class Program
         app.UseRouting();
         app.UseAuthorization();
         app.MapRazorPages();
-        app.MapHub<RankHub>("/rankHub");
+        app.MapHub<RankUpdatesHub>("/hubs/rank-updates");
         app.Run();
     }
 }
