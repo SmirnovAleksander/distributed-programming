@@ -6,6 +6,15 @@
 
 <div class="text-center">
     <form method="post">
+        <div class="col-2">Страна:</div>
+        <div class="col-10">
+            <select name="country">
+                @foreach (var c in Model.Countries)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+        </div>
         <div class="col-2">Текст для оценки:</div>
         <div class="col-10">
             <textarea name="text" rows="5" cols="50"></textarea>

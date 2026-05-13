@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using StackExchange.Redis;
 using Valuator.Infrastructure;
 
 namespace Valuator.Pages;
@@ -9,18 +8,20 @@ namespace Valuator.Pages;
 public class IndexModel : PageModel
 {
     private readonly ILogger<IndexModel> _logger;
-    private readonly IDatabase _db;
+    private readonly ShardManager _shardManager;
     private readonly RankTaskPublisher _publisher;
     private readonly EventsPublisher _eventsPublisher;
 
+    public string[] Countries => ShardManager.Countries;
+
     public IndexModel(
         ILogger<IndexModel> logger,
-        IConnectionMultiplexer redis,
+        ShardManager shardManager,
         RankTaskPublisher publisher,
         EventsPublisher eventsPublisher)
     {
         _logger = logger;
-        _db = redis.GetDatabase();
+        _shardManager = shardManager;
         _publisher = publisher;
         _eventsPublisher = eventsPublisher;
     }
@@ -29,7 +30,7 @@ public class IndexModel : PageModel
     {
     }
 
-    public async Task<IActionResult> OnPostAsync(string text)
+    public async Task<IActionResult> OnPostAsync(string text, string country)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -37,19 +38,21 @@ public class IndexModel : PageModel
         }
 
         string id = Guid.NewGuid().ToString();
+        string region = ShardManager.GetRegion(country);
+        var db = _shardManager.GetRegionDb(region);
 
-        string textKey = "TEXT-" + id;
-        await _db.StringSetAsync(textKey, text);
+        await db.StringSetAsync($"TEXT-{id}", text);
 
-        string similarityKey = "SIMILARITY-" + id;
-        const string allTextsKey = "ALL_TEXTS";
-
-        bool added = await _db.SetAddAsync(allTextsKey, text);
+        bool added = await db.SetAddAsync("ALL_TEXTS", text);
         int similarity = added ? 0 : 1;
 
-        await _db.StringSetAsync(similarityKey, similarity);
+        await db.StringSetAsync($"SIMILARITY-{id}", similarity);
 
-        var similarityEvent = new SimilarityCalculatedEvent(id, similarity);
+        await _shardManager.SetShardAsync(id, region);
+
+        _logger.LogInformation("LOOKUP: {Id},  {Region}", id, region);
+
+        var similarityEvent = new SimilarityCalculatedEvent(id, similarity, region);
         var eventJson = JsonSerializer.Serialize(similarityEvent);
         await _eventsPublisher.PublishEventAsync("similarity", eventJson);
 
@@ -59,4 +62,4 @@ public class IndexModel : PageModel
     }
 }
 
-public record SimilarityCalculatedEvent(string Id, int Similarity);
+public record SimilarityCalculatedEvent(string Id, int Similarity, string Region);

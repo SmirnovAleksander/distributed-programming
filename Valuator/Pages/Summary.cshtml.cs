@@ -1,24 +1,25 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using StackExchange.Redis;
+using Valuator.Infrastructure;
 
 namespace Valuator.Pages;
 
 public class SummaryModel : PageModel
 {
     private readonly ILogger<SummaryModel> _logger;
-    private readonly IDatabase _db;
+    private readonly ShardManager _shardManager;
 
-    public SummaryModel(ILogger<SummaryModel> logger, IConnectionMultiplexer redis)
+    public SummaryModel(ILogger<SummaryModel> logger, ShardManager shardManager)
     {
         _logger = logger;
-        _db = redis.GetDatabase();
+        _shardManager = shardManager;
     }
 
     public double Rank { get; set; }
     public double Similarity { get; set; }
     public bool RankReady { get; set; }
 
-    public void OnGet(string id)
+    public async Task OnGetAsync(string id)
     {
         _logger.LogDebug(id);
 
@@ -30,14 +31,22 @@ public class SummaryModel : PageModel
             return;
         }
 
-        string rankKey = "RANK-" + id;
-        string similarityKey = "SIMILARITY-" + id;
+        var region = await _shardManager.GetShardAsync(id);
+        if (region == null)
+        {
+            Rank = 0.0;
+            Similarity = 0.0;
+            RankReady = false;
+            return;
+        }
 
-        RedisValue rankRaw = _db.StringGet(rankKey);
+        var db = _shardManager.GetRegionDb(region);
+
+        RedisValue rankRaw = await db.StringGetAsync($"RANK-{id}");
         RankReady = !rankRaw.IsNull;
         Rank = rankRaw.IsNull ? 0.0 : (double)rankRaw;
 
-        RedisValue simRaw = _db.StringGet(similarityKey);
+        RedisValue simRaw = await db.StringGetAsync($"SIMILARITY-{id}");
         Similarity = simRaw.IsNull ? 0.0 : (double)simRaw;
     }
 }

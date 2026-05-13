@@ -1,4 +1,3 @@
-using StackExchange.Redis;
 using Valuator.Infrastructure;
 
 namespace Valuator;
@@ -11,14 +10,28 @@ public class Program
 
         builder.Services.AddRazorPages();
 
-        var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString") ?? "127.0.0.1:6379";
+        var mainDbConnection = builder.Configuration.GetValue<string>("DB_MAIN") ?? "localhost:6000";
+        var ruConnection = builder.Configuration.GetValue<string>("DB_RU") ?? "localhost:6001";
+        var euConnection = builder.Configuration.GetValue<string>("DB_EU") ?? "localhost:6002";
+        var asiaConnection = builder.Configuration.GetValue<string>("DB_ASIA") ?? "localhost:6003";
         var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMq:HostName") ?? "127.0.0.1";
         var rabbitMqExchange = builder.Configuration.GetValue<string>("RabbitMq:ExchangeName") ?? "valuator.processing.rank";
         var rabbitMqQueue = builder.Configuration.GetValue<string>("RabbitMq:QueueName") ?? "valuator.processing.rank";
         var rabbitMqEventsExchange = builder.Configuration.GetValue<string>("RabbitMq:EventsExchangeName") ?? "events";
 
-        builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
-            ConnectionMultiplexer.Connect(redisConnectionString));
+        builder.Services.AddSingleton(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<ShardManager>>();
+            return new ShardManager(
+                mainDbConnection,
+                new Dictionary<string, string>
+                {
+                    ["RU"] = ruConnection,
+                    ["EU"] = euConnection,
+                    ["ASIA"] = asiaConnection
+                },
+                logger);
+        });
 
         builder.Services.AddSingleton(new RabbitMqOptions
         {

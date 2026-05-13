@@ -46,6 +46,8 @@ rankConsumer.ReceivedAsync += async (_, ea) =>
         var message = Encoding.UTF8.GetString(body);
         var evt = JsonSerializer.Deserialize<RankCalculatedEvent>(message);
         Console.WriteLine($"[RankCalculated] Id: {evt?.Id}, Rank: {evt?.Rank}");
+        if (evt != null)
+            Console.WriteLine($"LOOKUP: {evt.Id},  {evt.Region}");
         await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
     }
     catch
@@ -70,6 +72,8 @@ similarityConsumer.ReceivedAsync += async (_, ea) =>
         var message = Encoding.UTF8.GetString(body);
         var evt = JsonSerializer.Deserialize<SimilarityCalculatedEvent>(message);
         Console.WriteLine($"[SimilarityCalculated] Id: {evt?.Id}, Similarity: {evt?.Similarity}");
+        if (evt != null)
+            Console.WriteLine($"LOOKUP: {evt.Id},  {evt.Region}");
         await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
     }
     catch
@@ -87,5 +91,5 @@ Console.WriteLine($"Listening for SimilarityCalculated events on queue: {similar
 Console.WriteLine("EventsLogger is running. Press Ctrl+C to exit.");
 await Task.Delay(Timeout.Infinite);
 
-public record RankCalculatedEvent(string Id, double Rank);
-public record SimilarityCalculatedEvent(string Id, int Similarity);
+public record RankCalculatedEvent(string Id, double Rank, string Region);
+public record SimilarityCalculatedEvent(string Id, int Similarity, string Region);

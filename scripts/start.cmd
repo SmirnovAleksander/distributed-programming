@@ -81,11 +81,35 @@ if errorlevel 1 (
 )
 
 :docker
-echo Recreating Redis...
-docker rm -f pa3-redis >nul 2>&1
-docker run -d --name pa3-redis -p 6379:6379 redis:7-alpine >nul
+echo Recreating Redis instances...
+docker rm -f pa3-redis-main >nul 2>&1
+docker run -d --name pa3-redis-main -p 6000:6379 redis:7-alpine >nul
 if errorlevel 1 (
-    echo Failed to start Redis
+    echo Failed to start Redis-MAIN
+    pause
+    exit /b 1
+)
+
+docker rm -f pa3-redis-ru >nul 2>&1
+docker run -d --name pa3-redis-ru -p 6001:6379 redis:7-alpine >nul
+if errorlevel 1 (
+    echo Failed to start Redis-RU
+    pause
+    exit /b 1
+)
+
+docker rm -f pa3-redis-eu >nul 2>&1
+docker run -d --name pa3-redis-eu -p 6002:6379 redis:7-alpine >nul
+if errorlevel 1 (
+    echo Failed to start Redis-EU
+    pause
+    exit /b 1
+)
+
+docker rm -f pa3-redis-asia >nul 2>&1
+docker run -d --name pa3-redis-asia -p 6003:6379 redis:7-alpine >nul
+if errorlevel 1 (
+    echo Failed to start Redis-ASIA
     pause
     exit /b 1
 )
@@ -119,6 +143,10 @@ echo Creating runner files...
 > "%RUNNERDIR%\valuator-5001.cmd" (
     echo @echo off
     echo title Valuator-5001
+    echo set DB_MAIN=localhost:6000
+    echo set DB_RU=localhost:6001
+    echo set DB_EU=localhost:6002
+    echo set DB_ASIA=localhost:6003
     echo cd /d "%VALUATOR_DIR%"
     echo dotnet run --no-build --urls http://0.0.0.0:5001
 )
@@ -126,6 +154,10 @@ echo Creating runner files...
 > "%RUNNERDIR%\valuator-5002.cmd" (
     echo @echo off
     echo title Valuator-5002
+    echo set DB_MAIN=localhost:6000
+    echo set DB_RU=localhost:6001
+    echo set DB_EU=localhost:6002
+    echo set DB_ASIA=localhost:6003
     echo cd /d "%VALUATOR_DIR%"
     echo dotnet run --no-build --urls http://0.0.0.0:5002
 )
@@ -133,6 +165,10 @@ echo Creating runner files...
 > "%RUNNERDIR%\rank-1.cmd" (
     echo @echo off
     echo title RankCalculator-1
+    echo set DB_MAIN=localhost:6000
+    echo set DB_RU=localhost:6001
+    echo set DB_EU=localhost:6002
+    echo set DB_ASIA=localhost:6003
     echo cd /d "%RANK_DIR%"
     echo dotnet run --no-build
 )
@@ -140,6 +176,10 @@ echo Creating runner files...
 > "%RUNNERDIR%\rank-2.cmd" (
     echo @echo off
     echo title RankCalculator-2
+    echo set DB_MAIN=localhost:6000
+    echo set DB_RU=localhost:6001
+    echo set DB_EU=localhost:6002
+    echo set DB_ASIA=localhost:6003
     echo cd /d "%RANK_DIR%"
     echo dotnet run --no-build
 )

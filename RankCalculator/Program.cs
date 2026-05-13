@@ -9,33 +9,53 @@ using StackExchange.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+var mainDbConnection = builder.Configuration["DB_MAIN"] ?? "localhost:6000";
+var ruConnection = builder.Configuration["DB_RU"] ?? "localhost:6001";
+var euConnection = builder.Configuration["DB_EU"] ?? "localhost:6002";
+var asiaConnection = builder.Configuration["DB_ASIA"] ?? "localhost:6003";
+
 var settings = new ServiceSettings(
-    builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Redis connection missing"),
+    mainDbConnection,
+    new Dictionary<string, string>
+    {
+        ["RU"] = ruConnection,
+        ["EU"] = euConnection,
+        ["ASIA"] = asiaConnection
+    },
     builder.Configuration["RabbitMq:HostName"] ?? "localhost",
     builder.Configuration["RabbitMq:ExchangeName"] ?? "rank-exchange",
     builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue",
     builder.Configuration["RabbitMq:EventsExchangeName"] ?? "events"
 );
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(settings.RedisUrl));
-builder.Services.AddHostedService(sp => new RankCalculatorService(
-    sp.GetRequiredService<IConnectionMultiplexer>(),
-    settings));
+builder.Services.AddHostedService(sp => new RankCalculatorService(settings));
 
 var app = builder.Build();
 await app.RunAsync();
 
-public record ServiceSettings(string RedisUrl, string MqHost, string Exchange, string Queue, string EventsExchange);
+public record ServiceSettings(
+    string MainDbConnection,
+    Dictionary<string, string> RegionConnections,
+    string MqHost,
+    string Exchange,
+    string Queue,
+    string EventsExchange);
 
 public class RankCalculatorService : BackgroundService
 {
-    private readonly IConnectionMultiplexer _redis;
     private readonly ServiceSettings _cfg;
+    private readonly IConnectionMultiplexer _mainDb;
+    private readonly Dictionary<string, IConnectionMultiplexer> _regionDbs;
 
-    public RankCalculatorService(IConnectionMultiplexer redis, ServiceSettings settings)
+    public RankCalculatorService(ServiceSettings settings)
     {
-        _redis = redis;
         _cfg = settings;
+        _mainDb = ConnectionMultiplexer.Connect(settings.MainDbConnection);
+        _regionDbs = new Dictionary<string, IConnectionMultiplexer>();
+        foreach (var (region, conn) in settings.RegionConnections)
+        {
+            _regionDbs[region] = ConnectionMultiplexer.Connect(conn);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -74,7 +94,18 @@ public class RankCalculatorService : BackgroundService
             try
             {
                 var id = Encoding.UTF8.GetString(ea.Body.ToArray());
-                var db = _redis.GetDatabase();
+
+                var mainDb = _mainDb.GetDatabase();
+                var shardValue = await mainDb.StringGetAsync($"SHARD-{id}");
+                if (shardValue.IsNull)
+                {
+                    await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
+                    return;
+                }
+                var region = shardValue.ToString();
+                Console.WriteLine($"LOOKUP: {id},  {region}");
+
+                var db = _regionDbs[region].GetDatabase();
 
                 var textData = await db.StringGetAsync($"TEXT-{id}");
                 var text = textData.HasValue ? textData.ToString() : string.Empty;
@@ -83,7 +114,7 @@ public class RankCalculatorService : BackgroundService
                 rank = Math.Round(rank, 4);
                 await db.StringSetAsync($"RANK-{id}", rank);
 
-                var eventMessage = new RankCalculatedEvent(id, rank);
+                var eventMessage = new RankCalculatedEvent(id, rank, region);
                 var eventJson = JsonSerializer.Serialize(eventMessage);
                 var eventBody = Encoding.UTF8.GetBytes(eventJson);
 
@@ -119,4 +150,4 @@ public class RankCalculatorService : BackgroundService
     }
 }
 
-public record RankCalculatedEvent(string Id, double Rank);
+public record RankCalculatedEvent(string Id, double Rank, string Region);
