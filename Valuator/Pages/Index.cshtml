@@ -4,12 +4,58 @@
     ViewData["Title"] = "Главная";
 }
 
-<div class="text-center">
-    <form method="post">
-        <div class="col-2">Текст для оценки:</div>
-        <div class="col-10">
+<div style="display:flex">
+    <div style="flex:1">
+        <form method="post">
+            <p>Текст для оценки:</p>
             <textarea name="text" rows="5" cols="50"></textarea>
             <input type="submit" />
-        </div>
-    </form>
+        </form>
+    </div>
+
+    <div style="flex:1">
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <p>@User.Identity.Name</p>
+            <form method="post" asp-page-handler="logout">
+                <button type="submit">Выход</button>
+            </form>
+        }
+        else
+        {
+            <h3>Вход</h3>
+            <form method="post" asp-page-handler="login">
+                <p>
+                    <label>Логин</label>
+                    <input asp-for="LoginUsername" />
+                </p>
+                <p>
+                    <label>Пароль</label>
+                    <input asp-for="LoginPassword" type="password" />
+                </p>
+                @if (Model.Handler == "login" && !string.IsNullOrEmpty(Model.AuthMessage))
+                {
+                    <p>@Model.AuthMessage</p>
+                }
+                <button type="submit">Войти</button>
+            </form>
+
+            <h3>Регистрация</h3>
+            <form method="post" asp-page-handler="register">
+                <p>
+                    <label>Логин</label>
+                    <input asp-for="RegisterUsername" />
+                </p>
+                <p>
+                    <label>Пароль</label>
+                    <input asp-for="RegisterPassword" type="password" />
+                </p>
+                @if (Model.Handler == "register" && !string.IsNullOrEmpty(Model.AuthMessage))
+                {
+                    <p>@Model.AuthMessage</p>
+                }
+                <button type="submit">Зарегистрироваться</button>
+            </form>
+        }
+    </div>
 </div>

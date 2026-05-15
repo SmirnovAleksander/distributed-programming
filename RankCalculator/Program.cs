@@ -11,13 +11,22 @@ var builder = Host.CreateApplicationBuilder(args);
 
 var settings = new ServiceSettings(
     builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Redis connection missing"),
+    builder.Configuration["Redis:Password"] ?? "",
     builder.Configuration["RabbitMq:HostName"] ?? "localhost",
+    builder.Configuration["RabbitMq:UserName"] ?? "guest",
+    builder.Configuration["RabbitMq:Password"] ?? "guest",
     builder.Configuration["RabbitMq:ExchangeName"] ?? "rank-exchange",
     builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue",
     builder.Configuration["RabbitMq:EventsExchangeName"] ?? "events"
 );
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(settings.RedisUrl));
+var redisConfig = new ConfigurationOptions
+{
+    EndPoints = { settings.RedisUrl },
+    Password = settings.RedisPassword
+};
+
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConfig));
 builder.Services.AddHostedService(sp => new RankCalculatorService(
     sp.GetRequiredService<IConnectionMultiplexer>(),
     settings));
@@ -25,7 +34,7 @@ builder.Services.AddHostedService(sp => new RankCalculatorService(
 var app = builder.Build();
 await app.RunAsync();
 
-public record ServiceSettings(string RedisUrl, string MqHost, string Exchange, string Queue, string EventsExchange);
+public record ServiceSettings(string RedisUrl, string RedisPassword, string MqHost, string MqUser, string MqPassword, string Exchange, string Queue, string EventsExchange);
 
 public class RankCalculatorService : BackgroundService
 {
@@ -40,7 +49,12 @@ public class RankCalculatorService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        var factory = new ConnectionFactory { HostName = _cfg.MqHost };
+        var factory = new ConnectionFactory
+        {
+            HostName = _cfg.MqHost,
+            UserName = _cfg.MqUser,
+            Password = _cfg.MqPassword
+        };
 
         using var connection = await factory.CreateConnectionAsync(ct);
         var channel = await connection.CreateChannelAsync(null, ct);

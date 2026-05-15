@@ -7,8 +7,16 @@ Console.WriteLine("EventsLogger starting...");
 
 var hostName = args.Length > 0 ? args[0] : "localhost";
 var eventsExchange = args.Length > 1 ? args[1] : "events";
+var mqUser = args.Length > 2 ? args[2] : "guest";
+var mqPassword = args.Length > 3 ? args[3] : "guest";
 
-var factory = new ConnectionFactory { HostName = hostName };
+var factory = new ConnectionFactory
+{
+    HostName = hostName,
+    UserName = mqUser,
+    Password = mqPassword
+};
+
 await using var connection = await factory.CreateConnectionAsync();
 await using var channel = await connection.CreateChannelAsync();
 

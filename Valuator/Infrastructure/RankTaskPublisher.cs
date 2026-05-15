@@ -6,6 +6,8 @@ namespace Valuator.Infrastructure;
 public class RabbitMqOptions
 {
     public string HostName { get; set; } = string.Empty;
+    public string UserName { get; set; } = "guest";
+    public string Password { get; set; } = "guest";
     public string ExchangeName { get; set; } = string.Empty;
     public string QueueName { get; set; } = string.Empty;
 }
@@ -13,6 +15,8 @@ public class RabbitMqOptions
 public class EventsOptions
 {
     public string HostName { get; set; } = string.Empty;
+    public string UserName { get; set; } = "guest";
+    public string Password { get; set; } = "guest";
     public string ExchangeName { get; set; } = string.Empty;
 }
 
@@ -29,7 +33,9 @@ public class RankTaskPublisher
     {
         ConnectionFactory factory = new ConnectionFactory
         {
-            HostName = _options.HostName
+            HostName = _options.HostName,
+            UserName = _options.UserName,
+            Password = _options.Password
         };
 
         await using IConnection connection = await factory.CreateConnectionAsync();
@@ -77,7 +83,9 @@ public class EventsPublisher
     {
         ConnectionFactory factory = new ConnectionFactory
         {
-            HostName = _options.HostName
+            HostName = _options.HostName,
+            UserName = _options.UserName,
+            Password = _options.Password
         };
 
         await using IConnection connection = await factory.CreateConnectionAsync();

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using StackExchange.Redis;
 
@@ -17,8 +18,7 @@ public class SummaryModel : PageModel
     public double Rank { get; set; }
     public double Similarity { get; set; }
     public bool RankReady { get; set; }
-
-    public void OnGet(string id)
+    public IActionResult OnGet(string id)
     {
         _logger.LogDebug(id);
 
@@ -27,7 +27,21 @@ public class SummaryModel : PageModel
             Rank = 0.0;
             Similarity = 0.0;
             RankReady = false;
-            return;
+            return Page();
+        }
+
+        var author = _db.StringGet($"AUTHOR-{id}");
+        if (author.HasValue)
+        {
+            if (User.Identity?.IsAuthenticated != true)
+            {
+                return Redirect("/");
+            }
+
+            if (!string.Equals(author, User.Identity.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return Redirect("/");
+            }
         }
 
         string rankKey = "RANK-" + id;
@@ -39,5 +53,7 @@ public class SummaryModel : PageModel
 
         RedisValue simRaw = _db.StringGet(similarityKey);
         Similarity = simRaw.IsNull ? 0.0 : (double)simRaw;
+
+        return Page();
     }
 }

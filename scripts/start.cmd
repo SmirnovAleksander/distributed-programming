@@ -81,9 +81,13 @@ if errorlevel 1 (
 )
 
 :docker
+set "REDIS_PASSWORD=redis_local_pass"
+set "RABBITMQ_USER=user"
+set "RABBITMQ_PASSWORD=rabbit_local_pass"
+
 echo Recreating Redis...
 docker rm -f pa3-redis >nul 2>&1
-docker run -d --name pa3-redis -p 6379:6379 redis:7-alpine >nul
+docker run -d --name pa3-redis -p 6379:6379 redis:7-alpine redis-server --requirepass %REDIS_PASSWORD% >nul
 if errorlevel 1 (
     echo Failed to start Redis
     pause
@@ -92,7 +96,10 @@ if errorlevel 1 (
 
 echo Recreating RabbitMQ...
 docker rm -f pa3-rabbitmq >nul 2>&1
-docker run -d --name pa3-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management >nul
+docker run -d --name pa3-rabbitmq -p 5672:5672 -p 15672:15672 ^
+  -e RABBITMQ_DEFAULT_USER=%RABBITMQ_USER% ^
+  -e RABBITMQ_DEFAULT_PASS=%RABBITMQ_PASSWORD% ^
+  rabbitmq:3.13-management >nul
 if errorlevel 1 (
     echo Failed to start RabbitMQ
     pause
@@ -148,14 +155,14 @@ echo Creating runner files...
     echo @echo off
     echo title EventsLogger-1
     echo cd /d "%EVENTSLOGGER_DIR%"
-    echo dotnet run --no-build
+    echo dotnet run --no-build -- 127.0.0.1 events %RABBITMQ_USER% %RABBITMQ_PASSWORD%
 )
 
 > "%RUNNERDIR%\eventslogger-2.cmd" (
     echo @echo off
     echo title EventsLogger-2
     echo cd /d "%EVENTSLOGGER_DIR%"
-    echo dotnet run --no-build
+    echo dotnet run --no-build -- 127.0.0.1 events %RABBITMQ_USER% %RABBITMQ_PASSWORD%
 )
 
 echo Starting Valuator-5001...

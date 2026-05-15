@@ -9,3 +9,4 @@ obj/
 .pids/
 .runners/
 *.lscache
+*.log
