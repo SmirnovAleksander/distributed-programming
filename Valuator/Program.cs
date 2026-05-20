@@ -1,3 +1,4 @@
+using Shared;
 using Valuator.Infrastructure;
 
 namespace Valuator;
@@ -19,19 +20,14 @@ public class Program
         var rabbitMqQueue = builder.Configuration.GetValue<string>("RabbitMq:QueueName") ?? "valuator.processing.rank";
         var rabbitMqEventsExchange = builder.Configuration.GetValue<string>("RabbitMq:EventsExchangeName") ?? "events";
 
-        builder.Services.AddSingleton(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<ShardManager>>();
-            return new ShardManager(
-                mainDbConnection,
-                new Dictionary<string, string>
-                {
-                    ["RU"] = ruConnection,
-                    ["EU"] = euConnection,
-                    ["ASIA"] = asiaConnection
-                },
-                logger);
-        });
+        builder.Services.AddSingleton(new RedisShardManager(
+            mainDbConnection,
+            new Dictionary<string, string>
+            {
+                ["RU"] = ruConnection,
+                ["EU"] = euConnection,
+                ["ASIA"] = asiaConnection
+            }));
 
         builder.Services.AddSingleton(new RabbitMqOptions
         {

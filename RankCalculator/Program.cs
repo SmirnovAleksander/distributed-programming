@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using StackExchange.Redis;
+using Shared;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -33,29 +33,15 @@ builder.Services.AddHostedService(sp => new RankCalculatorService(settings));
 var app = builder.Build();
 await app.RunAsync();
 
-public record ServiceSettings(
-    string MainDbConnection,
-    Dictionary<string, string> RegionConnections,
-    string MqHost,
-    string Exchange,
-    string Queue,
-    string EventsExchange);
-
 public class RankCalculatorService : BackgroundService
 {
     private readonly ServiceSettings _cfg;
-    private readonly IConnectionMultiplexer _mainDb;
-    private readonly Dictionary<string, IConnectionMultiplexer> _regionDbs;
+    private readonly RedisShardManager _shardManager;
 
     public RankCalculatorService(ServiceSettings settings)
     {
         _cfg = settings;
-        _mainDb = ConnectionMultiplexer.Connect($"{settings.MainDbConnection},abortConnect=false");
-        _regionDbs = new Dictionary<string, IConnectionMultiplexer>();
-        foreach (var (region, conn) in settings.RegionConnections)
-        {
-            _regionDbs[region] = ConnectionMultiplexer.Connect($"{conn},abortConnect=false");
-        }
+        _shardManager = new RedisShardManager(settings.MainDbConnection, settings.RegionConnections);
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -95,17 +81,15 @@ public class RankCalculatorService : BackgroundService
             {
                 var id = Encoding.UTF8.GetString(ea.Body.ToArray());
 
-                var mainDb = _mainDb.GetDatabase();
-                var shardValue = await mainDb.StringGetAsync($"SHARD-{id}");
-                if (shardValue.IsNull)
+                var region = await _shardManager.GetShardAsync(id);
+                if (region == null)
                 {
                     await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
                     return;
                 }
-                var region = shardValue.ToString();
                 Console.WriteLine($"LOOKUP: {id},  {region}");
 
-                var db = _regionDbs[region].GetDatabase();
+                var db = _shardManager.GetRegionDb(region);
 
                 var textData = await db.StringGetAsync($"TEXT-{id}");
                 var text = textData.HasValue ? textData.ToString() : string.Empty;

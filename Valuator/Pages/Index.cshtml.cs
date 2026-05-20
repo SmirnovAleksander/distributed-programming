@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Shared;
 using Valuator.Infrastructure;
 
 namespace Valuator.Pages;
@@ -8,15 +9,15 @@ namespace Valuator.Pages;
 public class IndexModel : PageModel
 {
     private readonly ILogger<IndexModel> _logger;
-    private readonly ShardManager _shardManager;
+    private readonly RedisShardManager _shardManager;
     private readonly RankTaskPublisher _publisher;
     private readonly EventsPublisher _eventsPublisher;
 
-    public string[] Countries => ShardManager.Countries;
+    public string[] Countries => RedisShardManager.Countries;
 
     public IndexModel(
         ILogger<IndexModel> logger,
-        ShardManager shardManager,
+        RedisShardManager shardManager,
         RankTaskPublisher publisher,
         EventsPublisher eventsPublisher)
     {
@@ -38,7 +39,7 @@ public class IndexModel : PageModel
         }
 
         string id = Guid.NewGuid().ToString();
-        string region = ShardManager.GetRegion(country);
+        string region = RedisShardManager.GetRegion(country);
         var db = _shardManager.GetRegionDb(region);
 
         await db.StringSetAsync($"TEXT-{id}", text);

@@ -1,12 +1,11 @@
 using StackExchange.Redis;
 
-namespace Valuator.Infrastructure;
+namespace Shared;
 
-public class ShardManager : IDisposable
+public class RedisShardManager : IDisposable
 {
     private readonly IConnectionMultiplexer _mainDb;
     private readonly Dictionary<string, IConnectionMultiplexer> _regionDbs;
-    private readonly ILogger<ShardManager> _logger;
 
     public static readonly Dictionary<string, string> CountryRegion = new()
     {
@@ -21,18 +20,19 @@ public class ShardManager : IDisposable
 
     public static string GetRegion(string country) => CountryRegion[country];
 
-    public ShardManager(
-        string mainConnection,
-        Dictionary<string, string> regionConnections,
-        ILogger<ShardManager> logger)
+    public RedisShardManager(string mainConnection, Dictionary<string, string> regionConnections)
     {
-        _logger = logger;
-        _mainDb = ConnectionMultiplexer.Connect($"{mainConnection},abortConnect=false");
+        _mainDb = ConnectWithRetry(mainConnection);
         _regionDbs = new Dictionary<string, IConnectionMultiplexer>();
         foreach (var (region, conn) in regionConnections)
         {
-            _regionDbs[region] = ConnectionMultiplexer.Connect($"{conn},abortConnect=false");
+            _regionDbs[region] = ConnectWithRetry(conn);
         }
+    }
+
+    private static ConnectionMultiplexer ConnectWithRetry(string connection)
+    {
+        return ConnectionMultiplexer.Connect($"{connection},abortConnect=false");
     }
 
     public IDatabase GetMainDb() => _mainDb.GetDatabase();
@@ -49,16 +49,13 @@ public class ShardManager : IDisposable
     {
         var db = GetMainDb();
         var value = await db.StringGetAsync($"SHARD-{id}");
-        if (value.IsNull) return null;
-        var region = value.ToString();
-        _logger.LogInformation("LOOKUP: {Id},  {Region}", id, region);
-        return region;
+        return value.IsNull ? null : value.ToString();
     }
 
     public void Dispose()
     {
         _mainDb?.Dispose();
-        foreach (var region in _regionDbs.Values)
-            region?.Dispose();
+        foreach (var mux in _regionDbs.Values)
+            mux?.Dispose();
     }
 }

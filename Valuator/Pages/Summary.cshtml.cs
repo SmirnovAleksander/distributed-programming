@@ -1,15 +1,15 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Shared;
 using StackExchange.Redis;
-using Valuator.Infrastructure;
 
 namespace Valuator.Pages;
 
 public class SummaryModel : PageModel
 {
     private readonly ILogger<SummaryModel> _logger;
-    private readonly ShardManager _shardManager;
+    private readonly RedisShardManager _shardManager;
 
-    public SummaryModel(ILogger<SummaryModel> logger, ShardManager shardManager)
+    public SummaryModel(ILogger<SummaryModel> logger, RedisShardManager shardManager)
     {
         _logger = logger;
         _shardManager = shardManager;
