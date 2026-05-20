@@ -50,11 +50,11 @@ public class RankCalculatorService : BackgroundService
     public RankCalculatorService(ServiceSettings settings)
     {
         _cfg = settings;
-        _mainDb = ConnectionMultiplexer.Connect(settings.MainDbConnection);
+        _mainDb = ConnectionMultiplexer.Connect($"{settings.MainDbConnection},abortConnect=false");
         _regionDbs = new Dictionary<string, IConnectionMultiplexer>();
         foreach (var (region, conn) in settings.RegionConnections)
         {
-            _regionDbs[region] = ConnectionMultiplexer.Connect(conn);
+            _regionDbs[region] = ConnectionMultiplexer.Connect($"{conn},abortConnect=false");
         }
     }
 

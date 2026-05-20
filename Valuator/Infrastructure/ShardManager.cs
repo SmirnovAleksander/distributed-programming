@@ -27,11 +27,11 @@ public class ShardManager : IDisposable
         ILogger<ShardManager> logger)
     {
         _logger = logger;
-        _mainDb = ConnectionMultiplexer.Connect(mainConnection);
+        _mainDb = ConnectionMultiplexer.Connect($"{mainConnection},abortConnect=false");
         _regionDbs = new Dictionary<string, IConnectionMultiplexer>();
         foreach (var (region, conn) in regionConnections)
         {
-            _regionDbs[region] = ConnectionMultiplexer.Connect(conn);
+            _regionDbs[region] = ConnectionMultiplexer.Connect($"{conn},abortConnect=false");
         }
     }
 
@@ -58,7 +58,7 @@ public class ShardManager : IDisposable
     public void Dispose()
     {
         _mainDb?.Dispose();
-        foreach (var mux in _regionDbs.Values)
-            mux?.Dispose();
+        foreach (var region in _regionDbs.Values)
+            region?.Dispose();
     }
 }
