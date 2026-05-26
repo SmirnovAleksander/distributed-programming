@@ -35,7 +35,7 @@ public class SummaryModel : PageModel
         {
             if (User.Identity?.IsAuthenticated != true)
             {
-                return Redirect("/");
+                return Redirect("/Auth/Login");
             }
 
             if (!string.Equals(author, User.Identity.Name, StringComparison.OrdinalIgnoreCase))

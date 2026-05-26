@@ -1,7 +1,4 @@
-using System.Security.Claims;
 using System.Text.Json;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using StackExchange.Redis;
@@ -15,33 +12,18 @@ public class IndexModel : PageModel
     private readonly IDatabase _db;
     private readonly RankTaskPublisher _publisher;
     private readonly EventsPublisher _eventsPublisher;
-    private readonly UserStore _userStore;
 
     public IndexModel(
         ILogger<IndexModel> logger,
         IConnectionMultiplexer redis,
         RankTaskPublisher publisher,
-        EventsPublisher eventsPublisher,
-        UserStore userStore)
+        EventsPublisher eventsPublisher)
     {
         _logger = logger;
         _db = redis.GetDatabase();
         _publisher = publisher;
         _eventsPublisher = eventsPublisher;
-        _userStore = userStore;
     }
-
-    [BindProperty]
-    public string LoginUsername { get; set; } = string.Empty;
-    [BindProperty]
-    public string LoginPassword { get; set; } = string.Empty;
-    [BindProperty]
-    public string RegisterUsername { get; set; } = string.Empty;
-    [BindProperty]
-    public string RegisterPassword { get; set; } = string.Empty;
-
-    public string Handler { get; set; } = string.Empty;
-    public string AuthMessage { get; set; } = string.Empty;
 
     public void OnGet()
     {
@@ -79,57 +61,6 @@ public class IndexModel : PageModel
         await _publisher.PublishAsync(id);
 
         return Redirect($"summary?id={id}");
-    }
-
-    public async Task<IActionResult> OnPostLoginAsync()
-    {
-        Handler = "login";
-        var userId = await _userStore.ValidateAsync(LoginUsername, LoginPassword);
-        if (userId == null)
-        {
-            AuthMessage = "Неверный логин или пароль";
-            return Page();
-        }
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.Name, LoginUsername),
-            new(ClaimTypes.NameIdentifier, userId)
-        };
-
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(identity);
-
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
-        return Redirect("/");
-    }
-
-    public async Task<IActionResult> OnPostRegisterAsync()
-    {
-        Handler = "register";
-        if (string.IsNullOrWhiteSpace(RegisterUsername) || string.IsNullOrWhiteSpace(RegisterPassword))
-        {
-            AuthMessage = "Логин и пароль не могут быть пустыми";
-            return Page();
-        }
-
-        var result = await _userStore.RegisterAsync(RegisterUsername, RegisterPassword);
-        if (!result)
-        {
-            AuthMessage = "Пользователь с таким логином уже существует";
-            return Page();
-        }
-
-        AuthMessage = "Регистрация успешна. Теперь вы можете войти.";
-        return Page();
-    }
-
-    public async Task<IActionResult> OnPostLogoutAsync()
-    {
-        Handler = "logout";
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Redirect("/");
     }
 }
 

@@ -27,6 +27,26 @@
                         </li>
                     </ul>
                     <ul class="navbar-nav">
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <li class="nav-item">
+                                <span class="nav-link text-dark">@User.Identity.Name</span>
+                            </li>
+                            <li class="nav-item">
+                                <form method="post" asp-page="/Auth/Login" asp-page-handler="logout" class="nav-link text-dark" style="display:inline;padding:0;background:none;border:none;cursor:pointer">
+                                    <button type="submit" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;font:inherit">Выход</button>
+                                </form>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Auth/Login">Вход</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Auth/Register">Регистрация</a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>
