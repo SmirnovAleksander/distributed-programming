@@ -6,8 +6,8 @@ namespace Valuator.Infrastructure;
 public class RabbitMqOptions
 {
     public string HostName { get; set; } = string.Empty;
-    public string UserName { get; set; } = "guest";
-    public string Password { get; set; } = "guest";
+    public string UserName { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
     public string ExchangeName { get; set; } = string.Empty;
     public string QueueName { get; set; } = string.Empty;
 }
@@ -15,8 +15,8 @@ public class RabbitMqOptions
 public class EventsOptions
 {
     public string HostName { get; set; } = string.Empty;
-    public string UserName { get; set; } = "guest";
-    public string Password { get; set; } = "guest";
+    public string UserName { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
     public string ExchangeName { get; set; } = string.Empty;
 }
 

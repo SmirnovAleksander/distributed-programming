@@ -35,12 +35,14 @@ public class SummaryModel : PageModel
         {
             if (User.Identity?.IsAuthenticated != true)
             {
-                return Redirect("/Auth/Login");
+                // return Redirect("/Auth/Login");
+                return Unauthorized();
             }
 
             if (!string.Equals(author, User.Identity.Name, StringComparison.OrdinalIgnoreCase))
             {
-                return Redirect("/");
+                // return Redirect("/");
+                return StatusCode(403);
             }
         }
 

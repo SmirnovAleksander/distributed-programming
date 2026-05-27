@@ -13,8 +13,8 @@ var settings = new ServiceSettings(
     builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Redis connection missing"),
     builder.Configuration["Redis:Password"] ?? "",
     builder.Configuration["RabbitMq:HostName"] ?? "localhost",
-    builder.Configuration["RabbitMq:UserName"] ?? "guest",
-    builder.Configuration["RabbitMq:Password"] ?? "guest",
+    builder.Configuration["RabbitMq:UserName"] ?? "",
+    builder.Configuration["RabbitMq:Password"] ?? "",
     builder.Configuration["RabbitMq:ExchangeName"] ?? "rank-exchange",
     builder.Configuration["RabbitMq:QueueName"] ?? "rank-queue",
     builder.Configuration["RabbitMq:EventsExchangeName"] ?? "events"

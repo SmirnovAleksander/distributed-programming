@@ -7,8 +7,8 @@ Console.WriteLine("EventsLogger starting...");
 
 var hostName = args.Length > 0 ? args[0] : "localhost";
 var eventsExchange = args.Length > 1 ? args[1] : "events";
-var mqUser = args.Length > 2 ? args[2] : "guest";
-var mqPassword = args.Length > 3 ? args[3] : "guest";
+var mqUser = args.Length > 2 ? args[2] : "";
+var mqPassword = args.Length > 3 ? args[3] : "";
 
 var factory = new ConnectionFactory
 {

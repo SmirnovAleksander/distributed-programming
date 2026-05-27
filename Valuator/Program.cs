@@ -15,20 +15,18 @@ public class Program
         var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString") ?? "127.0.0.1:6379";
         var redisPassword = builder.Configuration.GetValue<string>("Redis:Password") ?? "";
         var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMq:HostName") ?? "127.0.0.1";
-        var rabbitMqUserName = builder.Configuration.GetValue<string>("RabbitMq:UserName") ?? "guest";
-        var rabbitMqPassword = builder.Configuration.GetValue<string>("RabbitMq:Password") ?? "guest";
+        var rabbitMqUserName = builder.Configuration.GetValue<string>("RabbitMq:UserName") ?? "";
+        var rabbitMqPassword = builder.Configuration.GetValue<string>("RabbitMq:Password") ?? "";
         var rabbitMqExchange = builder.Configuration.GetValue<string>("RabbitMq:ExchangeName") ?? "valuator.processing.rank";
         var rabbitMqQueue = builder.Configuration.GetValue<string>("RabbitMq:QueueName") ?? "valuator.processing.rank";
         var rabbitMqEventsExchange = builder.Configuration.GetValue<string>("RabbitMq:EventsExchangeName") ?? "events";
 
-        var redisConfig = new ConfigurationOptions
-        {
-            EndPoints = { redisConnectionString },
-            Password = redisPassword
-        };
-
         builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-            ConnectionMultiplexer.Connect(redisConfig));
+            ConnectionMultiplexer.Connect(new ConfigurationOptions
+            {
+                EndPoints = { redisConnectionString },
+                Password = redisPassword
+            }));
 
         builder.Services.AddSingleton(new RabbitMqOptions
         {

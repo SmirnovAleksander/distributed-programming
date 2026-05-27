@@ -31,6 +31,11 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(string text)
     {
+        if (User.Identity?.IsAuthenticated != true)
+        {
+            return Redirect("/Auth/Login");
+        }
+
         if (string.IsNullOrWhiteSpace(text))
         {
             return Page();
@@ -49,10 +54,7 @@ public class IndexModel : PageModel
 
         await _db.StringSetAsync(similarityKey, similarity);
 
-        if (User.Identity?.IsAuthenticated == true)
-        {
-            await _db.StringSetAsync($"AUTHOR-{id}", User.Identity.Name);
-        }
+        await _db.StringSetAsync($"AUTHOR-{id}", User.Identity.Name);
 
         var similarityEvent = new SimilarityCalculatedEvent(id, similarity);
         var eventJson = JsonSerializer.Serialize(similarityEvent);
